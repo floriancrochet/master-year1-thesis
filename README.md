@@ -1,7 +1,7 @@
 # Index Tracking and Asset Selection  
 *A research project on sparse index replication using penalized regression techniques for the S&P 500.*
 
-[Thesis (PDF – online)](https://drive.google.com/file/d/11zS62i8TvMN_il1KhHIQ_zXpZ7_0lr5X/view?usp=drive_link) • [Executive Summary (PDF – online)](https://drive.google.com/file/d/1r2AJqVG56BK5bwb2dM1LxY2Q1q9jXPcR/view?usp=drive_link) • [Data Visualization App](https://master-year1-thesis.onrender.com)
+[**Thesis (PDF – online)**](https://drive.google.com/file/d/11zS62i8TvMN_il1KhHIQ_zXpZ7_0lr5X/view?usp=drive_link) • [**Executive Summary (PDF – online)**](https://drive.google.com/file/d/1r2AJqVG56BK5bwb2dM1LxY2Q1q9jXPcR/view?usp=drive_link) • [**Data Visualization App**](https://master-year1-thesis.onrender.com)
 
 ---
 
