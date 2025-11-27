@@ -255,7 +255,7 @@ appli_legende_modeles = html.Div(
 # Chargement des données
 # -----------------------------------------
 
-hyperparametres = pd.read_csv("hyperparameters.csv")
+hyperparametres = pd.read_csv("data/hyperparameters.csv")
 
 hyperparametres_modeles = {
     "ridge": "Ridge",
@@ -387,7 +387,7 @@ appli_diagramme_lambda = html.Div(
 # Chargement des données
 # -----------------------------------------
 
-nb_variables = pd.read_csv("nb_variables.csv")
+nb_variables = pd.read_csv("data/nb_variables.csv")
 
 colonnes = {
     "stock": "Action",
@@ -497,7 +497,7 @@ appli_diagramme_nb_variables = html.Div(
 # Chargement des données
 # -----------------------------------------
 
-coefficients = pd.read_csv("coefficients.csv")
+coefficients = pd.read_csv("data/coefficients.csv")
 
 coefficients.rename(columns=colonnes, inplace=True)
 
@@ -647,7 +647,7 @@ appli_table_coefficients = html.Div(
 # Chargement des données
 # -----------------------------------------
 
-performance = pd.read_csv("performance.csv")
+performance = pd.read_csv("data/performance.csv")
 
 performance_modeles = {
     "sp500": "S&P 500",
@@ -792,7 +792,7 @@ appli_diagramme_performance = html.Div(
 # Chargement des données
 # -----------------------------------------
 
-data_performance = pd.read_csv("data_performance.csv")
+data_performance = pd.read_csv("data/data_performance.csv")
 data_performance.rename(
     columns={k: v for k, v in colonnes.items() if k in data_performance.columns},
     inplace=True,
