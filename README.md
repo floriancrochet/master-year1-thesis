@@ -118,4 +118,4 @@ This project is released under the **MIT License**.
 ---
 
 ## 💬 Acknowledgments
-This work was supervised by **Mr. Olivier Darné** and supported by the academic staff of the Applied Econometrics program. The visualization interface presents results from the dissertation titled *Index Tracking and Asset Selection*.
+This work was supervised by **Mr. Olivier Darné**.
