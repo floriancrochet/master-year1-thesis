@@ -1,104 +1,116 @@
-# Index Tracking and Asset Selection Using Penalized Regression  
-*A research-driven framework for constructing sparse S&P 500 tracking portfolios using penalized regression and robust econometric validation.*
+# Index Tracking and Asset Selection  
+*A research project on sparse index replication using penalized regression techniques for the S&P 500.*
 
 ---
 
-## 📘 Overview  
-This project implements an econometric framework to replicate the S&P 500 index with a reduced subset of its constituent stocks using sparse penalized regression techniques under non-negativity constraints. The objective is to balance replication accuracy with portfolio simplicity and cost-efficiency, reflecting realistic ETF construction conditions.
+## 📘 Overview
+This project provides tools for **replicating the S&P 500 index using a sparse subset of its constituent stocks through penalized regression methods**.  
+It was developed as part of a Master 1 dissertation in **Econometrics and Statistics (Applied Econometrics Track)**, focusing on **methodological rigor, model interpretability, and reproducibility**.
 
-The work applies Ridge, Lasso, Elastic Net, and Adaptive Lasso regressions combined with Distance Correlation Sure Independence Screening (DC-SIS) and rolling-origin cross-validation to ensure robust, interpretable, and stable replication portfolios over the period 2017–2024.
+The study applies Ridge, Lasso, Elastic Net, and Adaptive Lasso regressions under non-negativity constraints to construct parsimonious portfolios that minimize tracking error while preserving replication accuracy.
 
-**Objectives**  
-- Construct sparse portfolios that closely track the S&P 500  
-- Compare penalized regression methods under realistic constraints  
-- Evaluate replication performance using financial metrics such as tracking error, beta, correlation, and Jensen’s alpha  
-- Ensure methodological transparency and reproducibility  
-
----
-
-## ⚙️ Features  
-- Sparse asset selection via Ridge, Lasso, Elastic Net, and Adaptive Lasso  
-- Non-negativity constraints to reflect long-only portfolio strategies  
-- Variable screening using DC-SIS for dimensionality reduction  
-- Rolling-origin cross-validation to mitigate look-ahead bias  
-- Comprehensive performance evaluation (tracking error, beta, information ratio, Jensen’s alpha)  
-- Robust preprocessing: outlier adjustment, stationarity testing, and log-return calculation  
+**Objectives**
+- Construct sparse portfolios that replicate S&P 500 returns  
+- Identify stable subsets of assets using penalized regression  
+- Evaluate replication performance via tracking and risk metrics  
+- Provide a reproducible analytical framework for ETF design  
 
 ---
 
-## 🧰 Tech Stack  
-Language: R  
-Libraries & Packages:  
-tidyverse, tidyquant, xts, zoo, glmnet, VariableScreening, PerformanceAnalytics, urca, readxl, forecast, caret, fBasics
-
-All analyses were conducted within the R statistical environment with specialized time-series and econometric toolkits.
+## ⚙️ Features
+- Penalized regression with non-negativity constraints  
+- Variable screening via Distance Correlation Sure Independence Screening (DC-SIS)  
+- Rolling-origin cross-validation to prevent look-ahead bias  
+- Comparative evaluation of Ridge, Lasso, Elastic Net, and Adaptive Lasso  
+- Portfolio performance metrics: Tracking Error, Beta, Information Ratio, Jensen’s Alpha  
+- Interactive results visualization through a dedicated dashboard  
 
 ---
 
-## ⚙️ Installation  
+## 🧰 Tech Stack
+**Language:** R  
+**Core packages:** glmnet, VariableScreening, xts, zoo, PerformanceAnalytics, urca  
 
-Clone the repository and ensure required R packages are installed:
+**Visualization stack:** Python (Dash, Plotly, Pandas) for the results application
+
+---
+
+## ⚙️ Installation
+Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/floriancrochet/master-year1-thesis.git  
-cd master-year1-thesis  
-install.packages(c("tidyverse","glmnet","xts","PerformanceAnalytics","urca","VariableScreening"))
+git clone https://github.com/floriancrochet/master-year1-thesis.git
+cd master-year1-thesis
 ```
+
+> À compléter
 
 ---
 
-## 📚 Usage Example  
+## 📚 Usage Example
 
 ```r
-# Example: Fit Adaptive Lasso with DC-SIS  
-set.seed(2103)  
-model <- dcsis_glmnet_function("adlasso_dcsis", grid)  
-model$best_model_results
+# Example: Fit a penalized regression model with DC-SIS
+model <- dcsis_glmnet_function("adlasso_dcsis", grid)
+
+# Retrieve selected coefficients
+coefficients <- model$model_coefs
+
+# Count number of selected variables
+nb_variables <- model$model_variables
 ```
 
-Additional reproducible examples are available in the analysis scripts and notebooks within the repository.
+> Additional examples can be found in the code repository and associated scripts.
 
 ---
 
-## 📂 Project Structure  
+## 📂 Project Structure
 
 ```
-master-year1-thesis/  
-│  
-├── data/                # S&P 500 index and constituent datasets  
-├── src/                 # Core R scripts for modeling  
-├── notebooks/           # Exploratory analysis and visualizations  
-├── results/             # Model outputs and performance tables  
-├── figures/             # Generated plots and diagnostics  
-├── requirements.txt     # Package dependencies  
+master-year1-thesis/
+│
+├── thesis.pdf                     # Full dissertation
+├── thesis_code/                   # R code for econometric analysis
+├── thesis_data_visualization/     # Dash application for results visualization
+├── data/                          # Processed financial datasets (CSV)
+├── assets/                        # Figures and charts
 └── README.md
 ```
 
 ---
 
-## 📊 Results  
-Empirical results show that Lasso and Elastic Net achieve the lowest tracking error, while Adaptive Lasso offers the best trade-off between sparsity and performance. Adaptive Lasso selects approximately 140 stocks while maintaining strong replication and superior risk-adjusted returns, as indicated by its Information Ratio and Jensen’s alpha.
+## 📊 Results
+The empirical results demonstrate that:
 
-Tracking correlations reach approximately 0.994 for non-DC-SIS models and 0.983 for DC-SIS models, confirming strong index replication accuracy.
+- **Lasso and Elastic Net** achieve the lowest tracking error and highest replication accuracy.  
+- **Adaptive Lasso** produces the most parsimonious portfolios and delivers superior risk-adjusted performance.  
+- **DC-SIS** improves model stability but slightly increases tracking error due to aggressive dimensionality reduction.
 
----
+The visualization application includes:
+- Variable selection diagrams  
+- Hyperparameter comparison charts  
+- Coefficient tables by model  
+- Portfolio performance graphs  
 
-## 🧠 References  
-Key theoretical foundations and methodologies draw from:  
-- Tibshirani (1996), Lasso Regression  
-- Hastie, Tibshirani & Friedman (2009), The Elements of Statistical Learning  
-- Shu et al. (2020), Adaptive Elastic Net for High-Dimensional Index Tracking  
-- Hyndman & Athanasopoulos, Forecasting: Principles and Practice  
-
----
-
-## 📜 License  
-This project is released under the MIT License  
-© 2025 Florian Crochet
+> Example visualization:  
+> `thesis_data_visualization` dashboard presents comparative performance metrics and coefficient distributions.
 
 ---
 
-## 👤 Author  
+## 🧠 References
+- Zou (2006) – *The Adaptive Lasso and Its Oracle Properties*  
+- Tibshirani (1996) – *Regression Shrinkage and Selection via the Lasso*  
+- Wu & Yang (2014) – *Nonnegative Elastic Net for Index Tracking*  
+- Székely et al. (2007) – *Measuring Dependence by Correlation of Distances*
+
+---
+
+## 📜 License
+> À compléter
+
+---
+
+## 👤 Author
 **Florian Crochet**  
 [GitHub Profile](https://github.com/floriancrochet)
 
@@ -106,5 +118,5 @@ This project is released under the MIT License
 
 ---
 
-## 💬 Acknowledgments  
-This project was supervised by Mr. Olivier Darné and benefited from academic guidance in time series analysis and financial econometrics.
+## 💬 Acknowledgments
+This work was supervised by **Mr. Olivier Darné** and supported by the academic staff of the Applied Econometrics program. The visualization interface presents results from the dissertation titled *Index Tracking and Asset Selection*.
