@@ -43,8 +43,6 @@ git clone https://github.com/floriancrochet/master-year1-thesis.git
 cd master-year1-thesis
 ```
 
-> À compléter
-
 ---
 
 ## 📚 Usage Example
@@ -106,7 +104,8 @@ The visualization application includes:
 ---
 
 ## 📜 License
-> À compléter
+This project is released under the **MIT License**.  
+© 2025 Florian Crochet
 
 ---
 
