@@ -1,0 +1,1791 @@
+---
+title: "Dissertation"
+author: "Florian"
+format:
+  html:
+    toc: true
+    toc-title: Sommaire
+    code-fold: true
+    echo: true
+    eval: true
+    incremental: true
+  pdf:
+    toc: true
+    toc-title: Sommaire
+    echo: true
+    eval: true
+  revealjs:
+    incremental: true
+---
+
+# 1 Exploratory and Descriptive Analysis
+
+```{r}
+# libraries
+
+library(readxl)
+library(tidyverse)
+library(tidyquant)
+library(xts)
+library(urca)
+library(fBasics)
+library(corrplot)
+library(forecast)
+library(caret)
+library(glmnet)
+library(VariableScreening)
+library(patchwork)
+```
+
+## 1.1 Data Import
+
+### 1.1.1 Import
+
+-   S&P 500
+
+```{r}
+Y <- tq_get("^GSPC", from = "2017-01-01", to = "2024-03-15") |>
+  select(date, close) |>
+  rename(price = close)
+
+head(Y, n = 20)
+
+str(Y)
+```
+
+-   Stocks
+
+```{r}
+X <- read_excel("data/base_index_tracking.xlsx")
+
+str(X)
+```
+
+```{r}
+X <- X |>
+  rename_with(~"date", .cols = 1) |>
+  mutate(
+    date = as_date(date),
+    across(-1, ~ as.numeric(.))
+  )
+
+str(X)
+```
+
+### 1.1.2 U.S. stock market holidays
+
+```{r}
+# Dates
+X_dates <- X |>
+  select(date)
+
+Y_dates <- Y |>
+  select(date)
+
+# Different lengths
+length(X_dates)
+length(unique(X_dates))
+length(Y_dates)
+length(unique(Y_dates))
+
+# Dates in X that are not in Y
+missing_dates <- anti_join(X_dates, Y_dates, by = "date")
+
+missing_dates
+```
+
+```{r}
+# Remove U.S. Stock Market Holidays
+
+X <- X |>
+  filter(!date %in% missing_dates$date)
+length(X$date)
+```
+
+## 1.2 Missing Values
+
+-   S&P 500 return
+
+```{r}
+sum(is.na(Y))
+```
+
+-   Stock returns
+
+```{r}
+sum(is.na(X))
+
+X_na <- X |>
+  select(date, where(~ any(is.na(.))))
+
+names(X_na)[-1]
+```
+
+```{r}
+# Remove the columns listed in X_na
+X <- X |>
+  select(-all_of(names(X_na)[-1]))
+
+sum(is.na(X))
+```
+
+## 1.3 Return Calculation
+
+```{r}
+# Extensible time series class
+
+Y_xts <- Y |>
+  select(-date) |>
+  xts(order.by = Y$date)
+
+X_xts <- X |>
+  select(-date) |>
+  xts(order.by = X$date)
+```
+
+```{r}
+# Return Calculation
+Yr_xts <- Return.calculate(Y_xts, method = c("log")) |>
+  setNames("return")
+
+Xr_xts <- Return.calculate(X_xts, method = c("log"))
+```
+
+## 1.4 Outliers
+
+-   S&P 500 return
+
+```{r}
+# Boudt method: robust detection and adjustment of multivariate outliers
+Yr_zoo <- Return.clean(Yr_xts, method = "boudt")
+Yr_xts <- as.xts(Yr_zoo)
+```
+
+-   Stock returns
+
+```{r}
+# Xr_zoo <- Return.clean(Xr_xts, method = "boudt")
+#
+# saveRDS(Xr_zoo, "data/Xr_zoo.rds")
+```
+
+```{r}
+Xr_zoo <- readRDS("data/Xr_zoo.rds")
+Xr_xts <- as.xts(Xr_zoo)
+```
+
+## 1.5 Stationarity
+
+-   S&P 500 return 
+
+```{r}
+Yr_stationarity_tests <- function(serie) {
+  # ADF with trend and constant
+  adf_test_tc <- ur.df(serie, type = "trend", selectlags = "AIC")
+  adf_summary_tc <- summary(adf_test_tc)
+  adf_stat_tc <- adf_summary_tc@teststat[1]
+  adf_critical_1pct_tc <- adf_summary_tc@cval["tau3", "1pct"]
+  adf_stationarity_tc <- adf_stat_tc < adf_critical_1pct_tc
+
+  lags_tc <- adf_test_tc@lags
+
+  # ADF with constant only
+  adf_test_c <- ur.df(serie, type = "drift", selectlags = "AIC")
+  adf_summary_c <- summary(adf_test_c)
+  adf_stat_c <- adf_summary_c@teststat[1]
+  adf_critical_1pct_c <- adf_summary_c@cval["tau2", "1pct"]
+  adf_stationarity_c <- adf_stat_c < adf_critical_1pct_c
+
+  lags_c <- adf_test_c@lags
+
+  # ADF with no trend or constant
+  adf_test <- ur.df(serie, type = "none", selectlags = "AIC")
+  adf_summary <- summary(adf_test)
+  adf_stat <- adf_summary@teststat[1]
+  adf_critical_1pct <- adf_summary@cval["tau1", "1pct"]
+  adf_stationarity <- adf_stat < adf_critical_1pct
+
+  lags <- adf_test@lags
+
+  # PP test with trend
+  pp_test_tc <- ur.pp(serie, type = "Z-tau", model = "trend", use.lag = lags_tc)
+  pp_stat_tc <- pp_test_tc@teststat
+  pp_critical_1pct_tc <- pp_test_tc@cval["critical values", "1pct"]
+  pp_stationarity_tc <- pp_stat_tc < pp_critical_1pct_tc
+
+  # PP test with constant
+  pp_test_c <- ur.pp(serie, type = "Z-tau", model = "constant", use.lag = lags_c)
+  pp_stat_c <- pp_test_c@teststat
+  pp_critical_1pct_c <- pp_test_c@cval["critical values", "1pct"]
+  pp_stationarity_c <- pp_stat_c < pp_critical_1pct_c
+
+  # KPSS test with trend
+  kpss_test_tc <- ur.kpss(serie, type = "tau", use.lag = lags_tc)
+  kpss_summary_tc <- summary(kpss_test_tc)
+  kpss_stat_tc <- kpss_summary_tc@teststat
+  kpss_critical_1pct_tc <- kpss_summary_tc@cval["critical values", "1pct"]
+  kpss_stationarity_tc <- kpss_stat_tc < kpss_critical_1pct_tc
+
+  # KPSS test with constant
+  kpss_test_c <- ur.kpss(serie, type = "mu", use.lag = lags_c)
+  kpss_summary_c <- summary(kpss_test_c)
+  kpss_stat_c <- kpss_summary_c@teststat
+  kpss_critical_1pct_c <- kpss_summary_c@cval["critical values", "1pct"]
+  kpss_stationarity_c <- kpss_stat_c < kpss_critical_1pct_c
+
+  # Results
+  stationarity_results <- tibble(
+    Test_Result = c("test statistic", "critical value", "stationarity"),
+    ADF_tc      = c(adf_stat_tc, adf_critical_1pct_tc, adf_stationarity_tc),
+    ADF_c       = c(adf_stat_c, adf_critical_1pct_c, adf_stationarity_c),
+    ADF         = c(adf_stat, adf_critical_1pct, adf_stationarity),
+    PP_tc       = c(pp_stat_tc, pp_critical_1pct_tc, pp_stationarity_tc),
+    PP_c        = c(pp_stat_c, pp_critical_1pct_c, pp_stationarity_c),
+    KPSS_tc     = c(kpss_stat_tc, kpss_critical_1pct_tc, kpss_stationarity_tc),
+    KPSS_c      = c(kpss_stat_c, kpss_critical_1pct_c, kpss_stationarity_c)
+  )
+
+  lags_results <- tibble(
+    ADF_Trend_Type = c("trend", "drift", "none"),
+    Lags = c(lags_tc, lags_c, lags)
+  )
+
+  # Return
+  return(list(
+    stationarity = stationarity_results,
+    lags = lags_results
+  ))
+}
+
+
+Yr_stationarity <- Yr_stationarity_tests(Yr_xts$return)
+
+Yr_stationarity$stationarity
+Yr_stationarity$lags
+```
+
+-   Stock returns
+
+```{r}
+Xr_stationarity_tests <- map(names(Xr_xts), function(stock) {
+  serie <- Xr_xts[, stock]
+
+  # ADF with trend
+  adf_test_tc <- ur.df(serie, type = "trend", selectlags = "AIC")
+  adf_stat_tc <- summary(adf_test_tc)@teststat[1]
+  adf_critical_1pct_tc <- summary(adf_test_tc)@cval["tau3", "1pct"]
+  adf_stationarity_tc <- adf_stat_tc < adf_critical_1pct_tc
+  lags_tc <- adf_test_tc@lags
+
+  # ADF with constant
+  adf_test_c <- ur.df(serie, type = "drift", selectlags = "AIC")
+  adf_stat_c <- summary(adf_test_c)@teststat[1]
+  adf_critical_1pct_c <- summary(adf_test_c)@cval["tau2", "1pct"]
+  adf_stationarity_c <- adf_stat_c < adf_critical_1pct_c
+  lags_c <- adf_test_c@lags
+
+  # ADF with none
+  adf_test <- ur.df(serie, type = "none", selectlags = "AIC")
+  adf_stat <- summary(adf_test)@teststat[1]
+  adf_critical_1pct <- summary(adf_test)@cval["tau1", "1pct"]
+  adf_stationarity <- adf_stat < adf_critical_1pct
+  lags_none <- adf_test@lags
+
+  # PP with trend
+  pp_test_tc <- ur.pp(serie, type = "Z-tau", model = "trend", use.lag = lags_tc)
+  pp_stat_tc <- pp_test_tc@teststat
+  pp_critical_1pct_tc <- pp_test_tc@cval["critical values", "1pct"]
+  pp_stationarity_tc <- pp_stat_tc < pp_critical_1pct_tc
+
+  # PP with constant
+  pp_test_c <- ur.pp(serie, type = "Z-tau", model = "constant", use.lag = lags_c)
+  pp_stat_c <- pp_test_c@teststat
+  pp_critical_1pct_c <- pp_test_c@cval["critical values", "1pct"]
+  pp_stationarity_c <- pp_stat_c < pp_critical_1pct_c
+
+  # KPSS with trend
+  kpss_test_tc <- ur.kpss(serie, type = "tau", use.lag = lags_tc)
+  kpss_stat_tc <- summary(kpss_test_tc)@teststat
+  kpss_critical_1pct_tc <- summary(kpss_test_tc)@cval["critical values", "1pct"]
+  kpss_stationarity_tc <- kpss_stat_tc < kpss_critical_1pct_tc
+
+  # KPSS with constant
+  kpss_test_c <- ur.kpss(serie, type = "mu", use.lag = lags_c)
+  kpss_stat_c <- summary(kpss_test_c)@teststat
+  kpss_critical_1pct_c <- summary(kpss_test_c)@cval["critical values", "1pct"]
+  kpss_stationarity_c <- kpss_stat_c < kpss_critical_1pct_c
+
+  # Results
+  tibble(
+    STOCK   = stock,
+    ADF_tc  = adf_stationarity_tc,
+    ADF_c   = adf_stationarity_c,
+    ADF     = adf_stationarity,
+    PP_tc   = pp_stationarity_tc,
+    PP_c    = pp_stationarity_c,
+    KPSS_tc = kpss_stationarity_tc,
+    KPSS_c  = kpss_stationarity_c,
+    lags_tc = lags_tc,
+    lags_c  = lags_c,
+    lags    = lags_none
+  )
+}) |> bind_rows()
+
+# Summary
+Xr_stationarity_count <- Xr_stationarity_tests |>
+  summarise(
+    ADF_H1_tc      = sum(ADF_tc),
+    ADF_H1_c       = sum(ADF_c),
+    ADF_H1         = sum(ADF),
+    PP_H1_tc       = sum(PP_tc),
+    PP_H1_c        = sum(PP_c),
+    KPSS_H0_tc     = sum(KPSS_tc),
+    KPSS_H0_c      = sum(KPSS_c),
+    average_lag_tc = mean(lags_tc),
+    average_lag_c  = mean(lags_c),
+    average_lag    = mean(lags)
+  )
+Xr_stationarity_count
+```
+
+```{r}
+Xr_not_stationary_stocks <- Xr_stationarity_tests |>
+  filter(!KPSS_c)
+Xr_not_stationary_stocks
+```
+
+```{r}
+summary(ur.kpss(Xr_xts$`GENERAL ELECTRIC`, type = "mu", use.lag = 1))
+summary(ur.kpss(Xr_xts$`MATCH GROUP`, type = "mu", use.lag = 1))
+```
+
+## 1.6 Data Visualization
+
+-   S&P 500 price (without outlier adjustment)
+
+```{r}
+Y_graph <- Y |>
+  ggplot(aes(x = date, y = price)) +
+  geom_line() +
+  labs(
+    x = "Date",
+    y = "Price"
+  ) +
+  theme_bw()
+Y_graph
+```
+
+-   S&P 500 return (with outlier adjustment)
+
+```{r}
+Yr_xts_graph <- Yr_xts |>
+  fortify.zoo() |>
+  rename(date = Index) |>
+  ggplot(aes(x = date, y = return)) +
+  geom_line() +
+  labs(
+    x = "Date",
+    y = "Return"
+  ) +
+  theme_bw()
+Yr_xts_graph
+```
+
+-   Stock prices (without outlier adjustment)
+
+```{r}
+# Overlapping Prices of All Stocks
+
+X_graph <- X |>
+  pivot_longer(
+    -date,
+    names_to = "stock",
+    values_to = "price"
+  ) |>
+  ggplot(aes(
+    x = date,
+    y = price,
+    group = stock
+  )) +
+  geom_line() +
+  labs(
+    x = "Date",
+    y = "Prices"
+  ) +
+  theme_bw()
+X_graph
+```
+
+-   Stock returns (with outlier adjustment)
+
+```{r}
+# Overlapping Returns of All Stocks
+
+Xr_xts_long <- Xr_xts |>
+  fortify.zoo() |>
+  pivot_longer(
+    -Index,
+    names_to = "stock",
+    values_to = "return"
+  ) |>
+  rename(date = Index)
+
+Xr_xts_graph <- Xr_xts_long |>
+  ggplot(aes(
+    x = date,
+    y = return,
+    group = stock
+  )) +
+  geom_line(alpha = 0.2) +
+  labs(
+    x = "Date",
+    y = "Returns"
+  ) +
+  theme_bw()
+Xr_xts_graph
+```
+
+```{r}
+Xr_xts_long |>
+  arrange(desc(abs(return)))
+```
+
+## 1.7 Descriptive Statistics
+
+### 1.7.1 Statistics
+
+-   S&P 500 return
+
+```{r}
+Yr_stats <- basicStats(Yr_xts)
+Yr_stats
+```
+
+-   Stock returns
+
+```{r}
+Xr_stats <- basicStats(Xr_xts)
+# View(Xr_stats)
+```
+
+```{r}
+min_return <- min(Xr_stats["Minimum", ])
+max_return <- max(Xr_stats["Maximum", ])
+
+mean_returns_graph <- Xr_stats["Mean", ] |>
+  as_tibble() |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "stock",
+    values_to = "mean"
+  ) |>
+  ggplot(aes(
+    x = stock,
+    y = mean,
+  )) +
+  geom_point() +
+  labs(
+    x = "Stock",
+    y = "Mean Daily Log Return"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+mean_returns_graph
+
+stdev_returns_graph <- Xr_stats["Stdev", ] |>
+  as_tibble() |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "stock",
+    values_to = "stdev"
+  ) |>
+  ggplot(aes(
+    x = stock,
+    y = stdev,
+  )) +
+  geom_point() +
+  labs(
+    x = "Stock",
+    y = "Standard Deviation of Daily Log Return"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+stdev_returns_graph
+```
+
+### 1.7.2 Normality
+
+-   S&P 500 return
+
+```{r}
+shapiro.test(as.numeric(Yr_xts$return))
+```
+
+-   Stock returns
+
+```{r}
+Xr_normality_test <- map(names(Xr_xts), function(stock) {
+  serie <- as.numeric(Xr_xts[, stock])
+
+  Xr_normality_test <- shapiro.test(serie)
+  normality_pvalue <- Xr_normality_test[["p.value"]]
+  normality <- normality_pvalue >= 0.05 # Normality if TRUE
+
+  # Results
+  results <- tibble(
+    STOCK     = stock,
+    NORMALITY = normality
+  )
+
+  return(results)
+}) |> bind_rows()
+
+Xr_normality_count <- Xr_normality_test |>
+  summarise(
+    NORMALITY_TRUE = sum(NORMALITY),
+  )
+
+Xr_normality_count
+```
+
+## 1.8 Correlations
+
+```{r}
+# Correlations and p-values
+Xr_correlation <- cor(Xr_xts, method = "spearman")
+
+Xr_correlation_pvalue <- cor.mtest(Xr_xts, conf.level = 0.95)$p
+
+# Statistically significant correlations (95% confidence level)
+Xr_correlation_significant <- Xr_correlation_pvalue |>
+  as_tibble(rownames = "stock1") |>
+  pivot_longer(-stock1, names_to = "stock2", values_to = "p_value") |>
+  filter(stock1 < stock2, p_value <= 0.05)
+
+# Strong correlations (absolute value ≥ 0.7)
+Xr_correlation_strong <- Xr_correlation |>
+  as_tibble(rownames = "stock1") |>
+  pivot_longer(-stock1, names_to = "stock2", values_to = "correlation") |>
+  filter(stock1 < stock2, abs(correlation) >= 0.7) |>
+  arrange(desc(abs(correlation)))
+
+# Significant and strong correlations
+Xr_correlation_results <- Xr_correlation_strong |>
+  inner_join(Xr_correlation_significant, by = c("stock1", "stock2"))
+
+Xr_correlation_results
+```
+
+## 1.9 Autocorrelation
+
+### 1.9.1 ACF and PACF Analysis
+
+-   S&P 500 return
+
+```{r}
+# Number of observations
+Xr_nb_obs <- nrow(Xr_xts)
+
+# Number of lags to test
+nb_lags <- round(sqrt(Xr_nb_obs))
+
+# Function to calculate ACF and PACF
+compute_autocorrelation <- function(serie, name, max_lag = nb_lags) {
+  serie <- as.numeric(serie)
+
+  # ACF and PACF
+  acf_obj <- Acf(serie, lag.max = max_lag, plot = FALSE)
+  pacf_obj <- Pacf(serie, lag.max = max_lag, plot = FALSE)
+
+  # Compute series length
+  n <- length(serie)
+
+  # Extract lags, coefficients, and confidence bounds
+  tibble(
+    serie = name,
+    acf_lag = acf_obj$lag[-1, 1, 1],
+    acf = acf_obj$acf[-1, 1, 1],
+    pacf_lag = pacf_obj$lag[, 1, 1],
+    pacf = pacf_obj$acf[, 1, 1],
+    ci = 1.96 / sqrt(n) # 95% confidence threshold
+  )
+}
+
+# Compute ACF and PACF
+Yr_autocorrelation <- compute_autocorrelation(Yr_xts, "S&P 500")
+
+# Plot ACF with confidence bands
+Yr_acf_graph <- Yr_autocorrelation |>
+  ggplot(aes(x = acf_lag, y = acf)) +
+  geom_col(width = 0.1, color = "red") +
+  geom_hline(aes(yintercept = ci), linetype = "dashed") +
+  geom_hline(aes(yintercept = -ci), linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "black") +
+  labs(
+    x = "lags",
+    y = "ACF"
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Plot PACF with confidence bands
+Yr_pacf_graph <- Yr_autocorrelation |>
+  ggplot(aes(x = pacf_lag, y = pacf)) +
+  geom_col(width = 0.1, color = "red") +
+  geom_hline(aes(yintercept = ci), linetype = "dashed") +
+  geom_hline(aes(yintercept = -ci), linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "black") +
+  labs(
+    x = "lags",
+    y = "PACF"
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+-   Stock returns
+
+```{r}
+# Compute ACF and PACF for each stock's return series
+Xr_autocorrelation <- names(Xr_xts) |>
+  map(function(stock) {
+    compute_autocorrelation(Xr_xts[, stock], stock)
+  }) |>
+  bind_rows()
+
+# Plot superimposed ACFs for all stocks
+Xr_acf_graph <- Xr_autocorrelation |>
+  ggplot(aes(x = acf_lag, y = acf, fill = serie)) +
+  geom_col(width = 0.1) +
+  geom_hline(aes(yintercept = ci), linetype = "dashed") +
+  geom_hline(aes(yintercept = -ci), linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  labs(
+    x = "lags",
+    y = "ACF"
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Plot superimposed PACFs for all stocks
+Xr_pacf_graph <- Xr_autocorrelation |>
+  ggplot(aes(x = pacf_lag, y = pacf, fill = serie)) +
+  geom_col(width = 0.1) +
+  geom_hline(aes(yintercept = ci), linetype = "dashed") +
+  geom_hline(aes(yintercept = -ci), linetype = "dashed") +
+  geom_hline(yintercept = 0) +
+  labs(
+    x = "lags",
+    y = "PACF"
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+```{r}
+# Sort stocks by the largest absolute ACF value (first lag)
+Xr_autocorrelation |>
+  arrange(desc(abs(acf)))
+```
+
+### 1.9.2 Ljung-Box Test
+
+```{r}
+# Function to apply the Ljung-Box test
+compute_lb_test <- function(serie, name, max_lag = nb_lags, alpha = 0.1) {
+  serie <- as.numeric(serie)
+
+  tibble(lag = 1:max_lag) |>
+    mutate(
+      name = name,
+      test = map(lag, ~ Box.test(serie, lag = .x, type = "Ljung-Box")),
+      X_squared = map_dbl(test, "statistic"),
+      df = map_dbl(test, "parameter"),
+      p_value = map_dbl(test, "p.value"),
+      decision = if_else(
+        p_value < alpha,
+        "Reject H0", # autocorrelation detected
+        "Fail to reject H0"
+      ),
+    ) |>
+    select(name, lag, X_squared, df, p_value, decision)
+}
+
+# Ljung-Box test on the S&P 500 index returns
+Yr_lb_test <- compute_lb_test(Yr_xts, "S&P 500")
+
+
+# Ljung-Box test on each stock return series
+Xr_lb_test <- names(Xr_xts) |>
+  map(function(stock) {
+    compute_lb_test(as.numeric(Xr_xts[, stock]), stock)
+  }) |>
+  bind_rows()
+
+Xr_lb_test |>
+  filter(decision == "Reject H0") |>
+  arrange(desc(p_value))
+```
+
+# 2 Variable Selection
+
+## 2.1 Data Preparation
+
+```{r}
+# Prepare returns data for modeling
+
+Xr_mat <- as.matrix(Xr_xts) # Matrix of individual S&P 500 stock returns
+Yr_vec <- as.matrix(Yr_xts) # Vector of S&P 500 index returns
+
+YXr_mat <- as.matrix(       # Matrix combining index and stock returns
+  merge(
+    Yr_xts,
+    Xr_xts,
+    check.names = FALSE
+  )
+)
+
+colnames(YXr_mat)[1] <- "S&P 500"
+```
+
+```{r}
+# Hyperparameter grids
+
+lambda_grid <- 10^seq(-7, -2, length.out = 100) # Regularization strengths
+alpha_grid <- seq(0.05, 0.95, by = 0.05) # Elastic Net mixing values
+
+ridge_grid <- expand.grid(alpha = 0, lambda = lambda_grid) # Ridge: alpha = 0
+lasso_grid <- expand.grid(alpha = 1, lambda = lambda_grid) # Lasso: alpha = 1
+en1_grid <- expand.grid(alpha = 0.5, lambda = lambda_grid) # Elastic Net: alpha = 0.5
+en2_grid <- expand.grid(alpha = alpha_grid, lambda = lambda_grid) # Elastic Net
+```
+
+## 2.2 Time series cross-validation with rolling window 
+
+### 2.2.1 Rolling Window CV Setup for Penalized Regression Models
+
+```{r}
+ts_control <- trainControl(
+  method = "timeslice",
+  initialWindow = 504, # train on 2 years
+  horizon = 21, # test 1 month ahead
+  fixedWindow = TRUE, # fixed rolling window
+  skip = 20, # repeat monthly
+  verboseIter = TRUE
+)
+```
+
+### 2.2.2 Rolling Window CV Setup for DC-SIS Screening Procedure
+
+```{r}
+slices <- createTimeSlices(
+  1:nrow(YXr_mat),
+  initialWindow = 504,
+  horizon = 21,
+  fixedWindow = TRUE,
+  skip = 20
+)
+```
+
+## 2.3 Cross-Validated RMSE Plotting Function
+
+```{r}
+# Function to plot cross-validated RMSE across log(lambda) for the selected alpha
+
+plot_model <- function(results, best_alpha, best_lambda, title, legend_x, legend_y) {
+  results |>
+    filter(alpha == best_alpha) |>
+    ggplot(aes(x = log(lambda), y = RMSE)) +
+    geom_point(color = "red") +
+    geom_errorbar(
+      aes(ymin = RMSE - RMSESD, ymax = RMSE + RMSESD),
+      width = 0.1, color = "grey", alpha = 0.5
+    ) +
+    geom_vline(
+      aes(xintercept = log(best_lambda), linetype = "Best λ"),
+      color = "black", linewidth = 0.7
+    ) +
+    scale_linetype_manual(values = c("Best λ" = "dashed")) +
+    labs(
+      title = title,
+      x     = expression(log(lambda)),
+      y     = "Root Mean Squared Error"
+    ) +
+    theme_bw() +
+    theme(
+      plot.title             = element_text(hjust = 0.5),
+      legend.position        = "inside",
+      legend.position.inside = c(legend_x, legend_y),
+      legend.background      = element_rect(fill = "white", color = "black"),
+      legend.title           = element_blank(),
+      legend.text            = element_text(size = 10)
+    )
+}
+```
+
+## 2.4 Penalized Regression Model Selection
+
+### 2.4.1 Function
+
+```{r}
+# Fits a penalized regression model
+
+glmnet_function <- function(data, regression, grid, penalty_factor = rep(1, ncol(data) - 1)) {
+  
+  # Centered response
+  data[, "S&P 500"] <- scale(
+    data[, "S&P 500"], 
+    center = TRUE, 
+    scale = FALSE
+  )
+  
+  penalty_factor <- as.vector(penalty_factor)
+
+  # Penalized regression
+  model <- train(
+    `S&P 500` ~ .,                   # Regress S&P 500 on all predictors
+    data = data,                     # Dataset
+    method = "glmnet",               # Penalized regression
+    trControl = ts_control,          # Time-series cross-validation setup
+    tuneGrid = grid,                 # Grid of lambda and alpha values
+    standardize = TRUE,              # Standardize predictors
+    penalty.factor = penalty_factor, # Penalty weights for each coefficient
+    lower.limits = 0                 # Enforce non-negative coefficients
+  )
+
+  # Cross-validation results for full hyperparameter grid
+  model_results <- model$results
+
+  # Optimal hyperparameters selected for this fold
+  model_opt <- as_tibble(model$bestTune)
+
+  # Fitted coefficients at optimal lambda
+  model_coefs <- coef(model$finalModel, model_opt$lambda) |>
+    as.matrix() |>
+    as_tibble(rownames = "stock") |>
+    rename(!!regression := 2) |>
+    filter(stock != "(Intercept)") |> # Remove intercept
+    mutate(stock = str_replace_all(stock, "`", "")) # Clean variable names
+
+  # Number of non-zero coefficients (selected variables)
+  model_variables <- model_coefs |>
+    summarise(!!regression := sum(.data[[regression]] != 0))
+
+  # Return full results for this fold
+  list(
+    model_results = model_results,
+    model_opt = model_opt,
+    model_coefs = model_coefs,
+    model_variables = model_variables
+  )
+}
+```
+
+### 2.4.2 Ridge Regression (L2, non-negative)
+
+```{r}
+# Set seed for reproducibility
+set.seed(2103)
+
+# Cross-validated Ridge regression with L2 penalty and non-negativity constraint
+ridge <- glmnet_function(YXr_mat, "ridge", ridge_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+ridge_results <- ridge$model_results
+
+# Optimal lambda value
+ridge_opt <- ridge$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+ridge_plot <- plot_model(
+  ridge_results,
+  ridge_opt$alpha,
+  ridge_opt$lambda,
+  "Ridge Regression",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+ridge_coefs <- ridge$model_coefs
+
+# Count variables with non-zero coefficients
+ridge_variables <- ridge$model_variables
+```
+
+### 2.4.3 Lasso Regression (L1, non-negative)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Lasso regression with L1 penalty and non-negativity constraint
+lasso <- glmnet_function(YXr_mat, "lasso", lasso_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+lasso_results <- lasso$model_results
+
+# Optimal lambda value
+lasso_opt <- lasso$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+lasso_plot <- plot_model(
+  lasso_results,
+  lasso_opt$alpha,
+  lasso_opt$lambda,
+  "Lasso Regression",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+lasso_coefs <- lasso$model_coefs
+
+# Count variables with non-zero coefficients
+lasso_variables <- lasso$model_variables
+```
+
+### 2.4.4 Elastic Net Regression (L1 + L2, non-negative, alpha = 0.5)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Elastic Net regression with L1+L2 penalty, non-negativity constraint
+# and alpha = 0.5
+en1 <- glmnet_function(YXr_mat, "en1", en1_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+en1_results <- en1$model_results
+
+# Optimal alpha and lambda values
+en1_opt <- en1$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+en1_plot <- plot_model(
+  en1_results,
+  en1_opt$alpha,
+  en1_opt$lambda,
+  "Elastic Net Regression (alpha = 0.5)",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+en1_coefs <- en1$model_coefs
+
+# Count variables with non-zero coefficients
+en1_variables <- en1$model_variables
+```
+
+### 2.4.5 Elastic Net Regression (L1 + L2, non-negative)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Elastic Net regression with L1+L2 penalty and non-negativity constraint
+en2 <- glmnet_function(YXr_mat, "en2", en2_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+en2_results <- en2$model_results
+
+# Optimal alpha and lambda values
+en2_opt <- en2$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+en2_plot <- plot_model(
+  en2_results,
+  en2_opt$alpha,
+  en2_opt$lambda,
+  "Elastic Net Regression",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+en2_coefs <- en2$model_coefs
+
+# Count variables with non-zero coefficients
+en2_variables <- en2$model_variables
+```
+
+### 2.4.6 Adaptive Lasso Regression (Non-Convex Penalized Regressions)
+
+```{r}
+# Calculate penalty weights as the inverse of absolute Ridge coefficients, with small constant to avoid division by zero
+ridge_penalty_weights <- 1 / (abs(ridge_coefs$ridge) + 1e-5)
+```
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Adaptive Lasso regression with ridge penalty and non-negativity constraint
+adlasso <- glmnet_function(
+  YXr_mat,
+  "adlasso",
+  lasso_grid,
+  ridge_penalty_weights
+)
+
+# Cross-validation results across all alpha–lambda combinations
+adlasso_results <- adlasso$model_results
+
+# Optimal alpha and lambda values
+adlasso_opt <- adlasso$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+adlasso_plot <- plot_model(
+  adlasso_results,
+  adlasso_opt$alpha,
+  adlasso_opt$lambda,
+  "Adaptive Lasso Regression",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+adlasso_coefs <- adlasso$model_coefs
+
+# Count variables with non-zero coefficients
+adlasso_variables <- adlasso$model_variables
+```
+
+## 2.5 Penalized Regression Model Selection with Variable Preselection via DC-SIS Screening
+
+### 2.5.1 Function
+
+```{r}
+set.seed(2103)
+
+# Define folds for cross-validation (based on rolling window slices)
+folds <- 1:length(slices$train)
+
+# Number of observations
+Xr_nb_obs
+
+# Sure Independence Screening threshold: number of variables to keep
+nb_variables <- round(Xr_nb_obs / log(Xr_nb_obs))
+
+# Main model selection function
+dcsis_glmnet_function <- function(regression, grid) {
+  # Loop over all folds for time-series CV
+  dcsis_glmnet <- folds |>
+    map(function(fold) {
+      print(fold) # Track progress
+
+      # Train and test indices for current fold
+      train <- slices$train[[fold]]
+      test <- slices$test[[fold]]
+
+      # Subset training data
+      Xr_train <- Xr_mat[train, ]
+      Yr_train <- Yr_vec[train]
+
+      # --- Variable Screening with DC-SIS ---
+
+      dcsis <- screenIID(X = Xr_train, Y = Yr_train, method = "DC-SIS")
+
+      # Distance correlation measurements for all predictors
+      dcsis_measurements <- dcsis$measurement
+
+      # Ranking of predictors (rank 1 = strongest association with Y)
+      dcsis_ranking <- dcsis$rank
+
+      # Top-ranked predictors according to threshold
+      selected_vars <- which(dcsis_ranking <= nb_variables)
+
+      # Subset full dataset to selected variables for both train & test
+      YXr_reduced <- YXr_mat[c(train, test), selected_vars]
+
+      # --- Penalized Regression Model Fitting ---
+
+      # Penalty factors: adaptive Lasso uses Ridge-based weights; others use equal penalties
+
+      if (regression == "adlasso_dcsis") {
+        ridge <- glmnet_function(YXr_reduced, "ridge", ridge_grid)
+        ridge_coefs <- ridge$model_coefs
+        penalty_factor <- 1 / (abs(ridge_coefs$ridge) + 1e-5)
+      } else {
+        penalty_factor <- rep(1, ncol(YXr_reduced) - 1)
+      }
+
+      # Penalized regression on DC-SIS selected predictors
+      model <- glmnet_function(YXr_reduced, regression, grid, penalty_factor)
+
+      # Cross-validation results for full hyperparameter grid
+      model_results <- model$model_results |>
+        add_column(fold = fold, .before = 1)
+
+      # Optimal hyperparameters selected for this fold
+      model_opt <- model$model_opt
+
+      # Fitted coefficients at optimal lambda
+      model_coefs <- model$model_coefs
+
+      # Number of non-zero coefficients (selected variables)
+      model_variables <- model$model_variables
+
+      # Return full results for this fold
+      list(
+        fold = fold,
+        model_results = model_results,
+        model_opt = model_opt,
+        model_coefs = model_coefs,
+        model_variables = model_variables
+      )
+    })
+
+  # --- Aggregate CV Results Across Folds ---
+
+  # Compute standard deviations of CV metrics across folds for each (alpha, lambda) combination
+  sd_metrics <- folds |>
+    map(~ dcsis_glmnet[[.x]]$model_results) |>
+    bind_rows() |>
+    group_by(alpha, lambda) |>
+    mutate(
+      RMSESD = sd(RMSE),
+      RsquaredSD = sd(Rsquared),
+      MAESD = sd(MAE)
+    )
+
+  # Collect CV results at fold-specific optimal hyperparameters (alpha, lambda)
+  best_model_results <- folds |>
+    map(function(fold) {
+      model_results <- dcsis_glmnet[[fold]]$model_results # Fold-level CV results
+      model_opt <- dcsis_glmnet[[fold]]$model_opt       # Fold-level optimal hyperparameters
+
+      model_results |>
+        filter(
+          alpha == model_opt$alpha,
+          lambda == model_opt$lambda
+        )
+    }) |>
+    bind_rows() |>
+    select(-c(RMSESD, RsquaredSD, MAESD)) |>
+    left_join(                                    
+      sd_metrics,
+      by = c("fold", "alpha", "lambda", "RMSE", "Rsquared", "MAE")
+    ) # Add aggregated SD metrics
+
+  # Identify best-performing fold based on lowest RMSE
+  best_fold <- best_model_results |>
+    filter(RMSE == min(RMSE)) |>
+    select(fold) |>
+    pull()
+  
+  # Add SD metrics to CV results list
+  dcsis_glmnet_best_fold <- list_modify(
+    dcsis_glmnet[[best_fold]],
+    model_results = sd_metrics |> filter(fold == best_fold)
+  )
+
+  # Return full results for best fold
+  return(dcsis_glmnet_best_fold)
+}
+```
+
+### 2.5.1 Ridge Regression (L2, non-negative)
+
+```{r}
+# Set seed for reproducibility
+set.seed(2103)
+
+# Cross-validated Ridge regression with L2 penalty and non-negativity constraint
+ridge_dcsis <- dcsis_glmnet_function("ridge_dcsis", ridge_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+ridge_dcsis_results <- ridge_dcsis$model_results
+
+# Optimal lambda value
+ridge_dcsis_opt <- ridge_dcsis$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+ridge_dcsis_plot <- plot_model(
+  ridge_dcsis_results,
+  ridge_dcsis_opt$alpha,
+  ridge_dcsis_opt$lambda,
+  "Ridge Regression (DC-SIS)",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+ridge_dcsis_coefs <- ridge_dcsis$model_coefs
+
+# Count variables with non-zero coefficients
+ridge_dcsis_variables <- ridge_dcsis$model_variables
+```
+
+### 2.5.2 Lasso Regression (L1, non-negative)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Lasso regression with L1 penalty and non-negativity constraint
+lasso_dcsis <- dcsis_glmnet_function("lasso_dcsis", lasso_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+lasso_dcsis_results <- lasso_dcsis$model_results
+
+# Optimal lambda value
+lasso_dcsis_opt <- lasso_dcsis$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+lasso_dcsis_plot <- plot_model(
+  lasso_dcsis_results,
+  lasso_dcsis_opt$alpha,
+  lasso_dcsis_opt$lambda,
+  "Lasso Regression (DC-SIS)",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+lasso_dcsis_coefs <- lasso_dcsis$model_coefs
+
+# Count variables with non-zero coefficients
+lasso_dcsis_variables <- lasso_dcsis$model_variables
+```
+
+### 2.5.3 Elastic Net Regression (L1 + L2, non-negative, alpha = 0.5)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Elastic Net regression with L1+L2 penalty, non-negativity constraint
+# and alpha = 0.5
+en1_dcsis <- dcsis_glmnet_function("en1_dcsis", en1_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+en1_dcsis_results <- en1_dcsis$model_results
+
+# Optimal alpha and lambda values
+en1_dcsis_opt <- en1_dcsis$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+en1_dcsis_plot <- plot_model(
+  en1_dcsis_results,
+  en1_dcsis_opt$alpha,
+  en1_dcsis_opt$lambda,
+  "Elastic Net Regression (DC-SIS) (alpha = 0.5)",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+en1_dcsis_coefs <- en1_dcsis$model_coefs
+
+# Count variables with non-zero coefficients
+en1_dcsis_variables <- en1_dcsis$model_variables
+```
+
+### 2.5.4 Elastic Net Regression (L1 + L2, non-negative)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Elastic Net regression with L1+L2 penalty and non-negativity constraint
+en2_dcsis <- dcsis_glmnet_function("en2_dcsis", en2_grid)
+
+# Cross-validation results across all alpha–lambda combinations
+en2_dcsis_results <- en2_dcsis$model_results
+
+# Optimal alpha and lambda values
+en2_dcsis_opt <- en2_dcsis$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+en2_dcsis_plot <- plot_model(
+  en2_dcsis_results,
+  en2_dcsis_opt$alpha,
+  en2_dcsis_opt$lambda,
+  "Elastic Net Regression (DC-SIS)",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+en2_dcsis_coefs <- en2_dcsis$model_coefs
+
+# Count variables with non-zero coefficients
+en2_dcsis_variables <- en2_dcsis$model_variables
+```
+
+### 2.5.5 Adaptive Lasso Regression (Non-Convex Penalized Regressions)
+
+```{r}
+set.seed(2103)
+
+# Cross-validated Adaptive Lasso regression with ridge penalty and non-negativity constraint
+adlasso_dcsis <- dcsis_glmnet_function(
+  "adlasso_dcsis",
+  lasso_grid
+)
+
+# Cross-validation results across all alpha–lambda combinations
+adlasso_dcsis_results <- adlasso_dcsis$model_results
+
+# Optimal alpha and lambda values
+adlasso_dcsis_opt <- adlasso_dcsis$model_opt
+
+# Plot of cross-validated RMSE across log(lambda) for the selected alpha
+adlasso_dcsis_plot <- plot_model(
+  adlasso_dcsis_results,
+  adlasso_dcsis_opt$alpha,
+  adlasso_dcsis_opt$lambda,
+  "Adaptive Lasso Regression (DC-SIS)",
+  0.2,
+  0.9
+)
+```
+
+```{r}
+# Coefficients at best lambda
+adlasso_dcsis_coefs <- adlasso_dcsis$model_coefs
+
+# Count variables with non-zero coefficients
+adlasso_dcsis_variables <- adlasso_dcsis$model_variables
+```
+
+## 2.6 Results for Regularized Regression Models
+
+### 2.6.1 Cross-Validated RMSE
+
+```{r}
+list_model_plots <- list(
+  ridge_plot,
+  ridge_dcsis_plot,
+  lasso_plot,
+  lasso_dcsis_plot,
+  en1_plot,
+  en1_dcsis_plot,
+  en2_plot,
+  en2_dcsis_plot,
+  adlasso_plot,
+  adlasso_dcsis_plot
+)
+
+graph_plot_models <- list_model_plots |>
+  split(ceiling(seq_along(list_model_plots) / 2)) |>
+  map(~ wrap_plots(.x, ncol = 2))
+```
+
+### 2.6.2 Estimated Hyperparameters for Regularization Models
+
+```{r}
+list_model_parameters <- list(
+  ridge         = ridge_opt,
+  lasso         = lasso_opt,
+  en1           = en1_opt,
+  en2           = en2_opt,
+  adlasso       = adlasso_opt,
+  ridge_dcsis   = ridge_dcsis_opt,
+  lasso_dcsis   = lasso_dcsis_opt,
+  en1_dcsis     = en1_dcsis_opt,
+  en2_dcsis     = en2_dcsis_opt,
+  adlasso_dcsis = adlasso_dcsis_opt
+)
+
+model_parameters <- list_model_parameters |>
+  map(~ tibble(alpha = .x$alpha, lambda = .x$lambda)) |>
+  bind_rows(.id = "Model")
+
+model_parameters
+```
+
+### 2.6.3 Estimated Coefficients by Model
+
+```{r}
+list_model_coefficients <- list(
+  ridge_coefs,
+  lasso_coefs,
+  en1_coefs,
+  en2_coefs,
+  adlasso_coefs,
+  ridge_dcsis_coefs,
+  lasso_dcsis_coefs,
+  en1_dcsis_coefs,
+  en2_dcsis_coefs,
+  adlasso_dcsis_coefs
+)
+
+model_coefficients <- list_model_coefficients |>
+  reduce(full_join, by = "stock")
+```
+
+```{r}
+# Non-identical coefficients
+
+model_coefficients |> 
+  slice(9, 10)
+```
+
+### 2.6.4 Selected Variables by Model
+
+```{r}
+# Models
+model_names <- c(
+  "ridge",
+  "lasso",
+  "en1",
+  "en2",
+  "adlasso",
+  "ridge_dcsis",
+  "lasso_dcsis",
+  "en1_dcsis",
+  "en2_dcsis",
+  "adlasso_dcsis"
+)
+
+model_stocks <- map(
+  1:10,
+  ~ list_model_coefficients[[.x]] |> 
+    rename(weight = 2) |> 
+    filter(weight != 0) |>
+    select(stock)
+) |> 
+  set_names(model_names)
+```
+
+```{r}
+# Models selecting the same variables
+
+model_same_stocks <- combn(model_names, 2) |>  
+  t() |> 
+  as_tibble() |> 
+  mutate(
+    identical = map2_lgl(
+      V1, 
+      V2, 
+      ~ identical(
+        model_stocks[[.x]], 
+        model_stocks[[.y]]
+      )
+    )
+  ) |> 
+  filter(identical)
+
+# lasso, en1 and en2
+# lasso_dcsis, en1_dcsis, en2_dcsis
+```
+
+```{r}
+# 484 stock names
+all_stocks <- names(X)[-1]
+
+# Matrix: 1 if stock selected by model, 0 otherwise
+
+model_stock_selection <- tibble(stock = all_stocks) |> 
+  bind_cols(
+    model_names |> 
+      map(~ as.integer(
+        all_stocks %in% model_stocks[[.x]]$stock
+      )) |> 
+      set_names(model_names) |> 
+      as_tibble()
+  ) |> 
+  # Keep stocks selected in any model
+  filter(rowSums(across(all_of(model_names))) > 0) |> 
+  # Keep models with different variable selections
+  select(stock,ridge, lasso, adlasso, ridge_dcsis, lasso_dcsis)
+```
+
+### 2.6.5 Number of Variables with Non-Zero Coefficients
+
+```{r}
+list_model_nb_variables <- list(
+  ridge_variables,
+  lasso_variables,
+  en1_variables,
+  en2_variables,
+  adlasso_variables,
+  ridge_dcsis_variables,
+  lasso_dcsis_variables,
+  en1_dcsis_variables,
+  en2_dcsis_variables,
+  adlasso_dcsis_variables
+)
+
+model_nb_variables <- list_model_nb_variables |>
+  bind_cols()
+```
+
+# 3 Performance of Constructed Portfolios Relative to the Stock Index
+
+## 3.1 Portfolio Construction
+
+```{r}
+# Index and stock returns
+YXr <- YXr_mat |> 
+  as_tibble(rownames = "date") |> 
+  mutate(date = as.Date(date))
+```
+
+### 3.1.1 Compute the weight of stock returns for each ETF
+
+```{r}
+ETF_weight <- list_model_coefficients |>
+  map(function(model) {
+    coef_col <- model[[2]]
+    model |>
+      mutate(
+        weight_returns = coef_col / sum(coef_col) # Normalize weights to sum to 1
+      ) |>
+      select(-2) |>
+      filter(weight_returns > 0) |>
+      arrange(desc(weight_returns))
+  }) |>
+  set_names(model_names)
+```
+
+### 3.1.2 Compute ETF returns and prices
+
+```{r}
+ETF <- model_names |>
+  set_names() |>
+  map(function(model) {
+    # Get stock symbols and their respective weights
+    stocks <- ETF_weight[[model]]$stock
+    weights <- ETF_weight[[model]]$weight_returns
+
+    # Compute ETF returns
+    ETF <- YXr |>
+      select(date, all_of(stocks)) |> # Select the correct dataset of stock returns
+      rowwise() |>
+      mutate(return = sum(c_across(all_of(stocks)) * weights)) |>
+      ungroup() |>
+      select(date, return)
+
+    # Initialize the ETF price to 100
+    P0 <- 100
+
+    # Add starting date row and compute the ETF prices
+    ETF <- ETF |>
+      add_row(
+        date = as.Date("2017-01-03"),
+        return = NA_real_,
+        .before = 1
+      ) |>
+      mutate(
+        price = P0 * exp(cumsum(coalesce(return, 0)))
+      )
+
+    return(ETF)
+  })
+```
+
+### 3.1.3 Investment Value in Each Asset and Number of Shares to Purchase
+
+```{r}
+# Compute investment values and number of shares for each model
+ETF_investment <- model_names |>
+  set_names() |>
+  map(function(model) {
+    
+    # Retrieve selected stocks and weights
+    etf_weight <- ETF_weight[[model]]
+    stocks <- etf_weight$stock
+
+    # Extract ETF price series
+    etf_price <- ETF[[model]] |> 
+      select(date, etf_price = price)
+    
+    # Extract stock price series for selected stocks
+    stock_prices <- X |> 
+      select(date, all_of(stocks))
+    
+    # Reshape stock prices to long format
+    stock_prices_long <- stock_prices |>
+      pivot_longer(-date, names_to = "stock", values_to = "stock_price")
+    
+    # Merge stock prices, weights, and ETF prices
+    investments <- stock_prices_long |>
+      left_join(etf_weight, by = "stock") |>
+      left_join(etf_price, by = "date") |>
+      mutate(
+        investment_value = weight_returns * etf_price,
+        shares_number = investment_value / stock_price
+      )
+    
+    # Reshape investment values to wide format
+    investment_value <- investments |>
+      select(date, stock, investment_value) |>
+      pivot_wider(names_from = stock, values_from = investment_value)
+
+    # Reshape number of shares to wide format
+    shares_number <- investments |>
+      select(date, stock, shares_number) |>
+      pivot_wider(names_from = stock, values_from = shares_number)
+
+    # Return results
+    list(
+      investment_value = investment_value,
+      shares_number = shares_number
+    )
+  })
+```
+
+## 3.2 Performance Evaluation
+
+### 3.2.1 Daily Risk-Free Rate from 3-Month Treasury Bills
+
+```{r}
+Rf <- tq_get("DTB3", get = "economic.data", from = "2017-01-04", to = "2024-03-14") |>
+  filter(date %in% YXr$date) |>
+  fill(price, .direction = "down") |>
+  mutate(
+    Rf = (1 + (price / 100))^(1 / 252) - 1
+  ) |>
+  select(date, Rf)
+
+sum(is.na(Rf))
+```
+
+### 3.2.2 Arithmetic Return Data for Performance Analysis
+
+```{r}
+# Convert S&P 500 log returns to arithmetic returns
+Yr_arith <- YXr |>
+  transmute(date, `S&P 500` = exp(`S&P 500`) - 1)
+
+# Convert ETF log returns to arithmetic
+ETFr_arithm <- tibble(date = ETF$ridge$date[-1]) |>
+  bind_cols(
+    model_names |>
+      set_names() |>
+      map(~ as.numeric(exp(ETF[[.x]]$return[-1]) - 1)) |>
+      bind_cols()
+  )
+
+# Merge and convert return data to time series (xts) for financial metric analysis
+data_performance <- Yr_arith |>
+  left_join(ETFr_arithm, by = "date") |>
+  left_join(Rf, by = "date")
+
+data_performance_xts <- data_performance |>
+  select(-date) |>
+  rename(sp500 = `S&P 500`) |> 
+  xts(order.by = Yr_arith$date,
+    check.names = FALSE)
+```
+
+### 3.2.3 Performance Metrics for ETFs and Benchmark
+
+```{r}
+# Compute Performance Metrics
+
+performance <- names(data_performance_xts) |>
+  map(function(data_name) {
+    Rb <- data_performance_xts$sp500
+    Rf <- data_performance_xts$Rf
+
+    # Compute metrics for a given ETF
+    if (data_name %in% names(ETFr_arithm)) {
+      Ra <- data_performance_xts[, data_name]
+
+      active_return     <- ActiveReturn(Ra, Rb)
+      beta              <- CAPM.beta(Ra, Rb, Rf = Rf)
+      # compound_return   <- Return.annualized(Ra)
+      correlation       <- cor(Ra, Rb)
+      # cumulative_return <- Return.cumulative(Ra)
+      info_ratio        <- InformationRatio(Ra, Rb)
+      jensen_alpha      <- mean(CAPM.jensenAlpha(Ra, Rb, Rf = Rf))
+      # sharpe            <- SharpeRatio(Ra, Rf = Rf, FUN = "StdDev")[, 1]
+      # sortino           <- SortinoRatio(Ra, MAR = Rf)[, 1]
+      tracking_error    <- TrackingError(Ra, Rb)
+      # treynor           <- TreynorRatio(Ra, Rb, Rf = Rf)
+      # volatility        <- StdDev(Ra)
+    }
+
+    # Compute metrics for the S&P 500
+    else if (data_name == "sp500") {
+      active_return     <- 0
+      beta              <- 1
+      # compound_return   <- Return.annualized(Rb)
+      correlation       <- 1
+      # cumulative_return <- Return.cumulative(Rb)
+      info_ratio        <- NA_real_
+      jensen_alpha      <- 0
+      # sharpe            <- SharpeRatio(Rb, Rf = Rf, FUN = "StdDev")[, 1]
+      # sortino           <- SortinoRatio(Rb, MAR = Rf)[, 1]
+      tracking_error    <- NA_real_
+      # treynor           <- TreynorRatio(Rb, Rb, Rf = Rf)
+      # volatility        <- StdDev(Rb)
+    } else {
+      return(NULL)
+    }
+
+    tibble(
+      Index_ETF         = data_name,
+      Active_Return     = as.numeric(active_return),
+      Beta              = as.numeric(beta),
+      # Compound_return   = as.numeric(compound_return),
+      Correlation_SP500 = as.numeric(correlation),
+      # Cumulative_Return = as.numeric(cumulative_return),
+      Information_Ratio = as.numeric(info_ratio),
+      Jensen_Alpha      = as.numeric(jensen_alpha),
+      # Sharpe_Ratio      = as.numeric(sharpe),
+      # Sortino_Ratio     = as.numeric(sortino),
+      Tracking_Error    = as.numeric(tracking_error),
+      # Treynor_Ratio     = as.numeric(treynor),
+      # Volatility        = as.numeric(volatility)
+    )
+  }) |>
+  bind_rows()
+
+performance
+```
+
+## 4.4. Ranking ETFs
+
+```{r}
+# Ranking ETFs Using Individual Metrics and a Composite Performance Score
+
+performance_ranked <- performance |>
+  mutate(
+    Active_Return     = rank(-Active_Return),
+    Beta              = rank(abs(Beta - 1)), # closer to 1 is better
+    # Compound_return   = rank(-Compound_return),
+    Correlation_SP500 = rank(-Correlation_SP500),
+    # Cumulative_Return = rank(-Cumulative_Return),
+    Information_Ratio = rank(-Information_Ratio),
+    Jensen_Alpha      = rank(-Jensen_Alpha),
+    # Sharpe_Ratio      = rank(-Sharpe_Ratio),
+    # Sortino_Ratio     = rank(-Sortino_Ratio),
+    Tracking_Error    = rank(Tracking_Error), # lower is better
+    # Treynor_Ratio     = rank(-Treynor_Ratio),
+    # Volatility        = rank(Volatility) # lower is better
+  ) |>
+  rowwise() |>
+  mutate(
+    Composite_Score = sum(
+      c_across(where(is.numeric)),
+      na.rm = TRUE
+    )
+  ) |>
+  ungroup() |>
+  arrange(Composite_Score)
+```
