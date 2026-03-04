@@ -1,112 +1,136 @@
-# Index Tracking and Asset Selection  
-*A research project on sparse index replication using penalized regression techniques for the S&P 500.*
+# S&P 500 Index Tracking using Penalized Regression
+This project replicates the S&P 500 index using sparse penalized regression techniques.
 
 [**Thesis (PDF – online)**](https://drive.google.com/file/d/11zS62i8TvMN_il1KhHIQ_zXpZ7_0lr5X/view?usp=drive_link) • [**Executive Summary (PDF – online)**](https://drive.google.com/file/d/1r2AJqVG56BK5bwb2dM1LxY2Q1q9jXPcR/view?usp=drive_link) • [**Data Visualization App**](https://master-year1-thesis.onrender.com)
 
 ---
 
-## 📘 Overview
-This project provides tools for **replicating the S&P 500 index using a sparse subset of its constituent stocks through penalized regression methods**.  
-It was developed as part of a Master 1 dissertation in **Econometrics and Statistics (Applied Econometrics Track)**, focusing on **methodological rigor, model interpretability, and reproducibility**.
-
-The study applies Ridge, Lasso, Elastic Net, and Adaptive Lasso regressions under non-negativity constraints to construct parsimonious portfolios that minimize tracking error while preserving replication accuracy.
+## 🎯 Overview
 
 **Objectives**
-- Construct sparse portfolios that replicate S&P 500 returns  
-- Identify stable subsets of assets using penalized regression  
-- Evaluate replication performance via tracking and risk metrics  
-- Provide a reproducible analytical framework for ETF design  
+- Construct sparse portfolios that replicate S&P 500 returns
+- Identify stable subsets of assets using penalized regression
+- Evaluate replication performance via tracking and risk metrics
+- Provide a reproducible analytical framework for ETF design
+
+---
+
+## 🗄️ Data
+- **Source:** Yahoo Finance and `data/base_index_tracking.xlsx`
+- **Time Period / Size:** 2017-01-01 to 2024-03-15
+- **Target Variable:** S&P 500 daily returns
+- **Key Predictors / Features:** Individual S&P 500 constituent stock returns
+- **Preprocessing:** Handled missing values, filtered market holidays, and adjusted outliers using Boudt robust method
+- **Data Availability:** Publicly available via `tidyquant` API, processed mock data are provided in `data/`
+
+---
+
+## 🧠 Methodology
+- **Theoretical Approach:** Sparse index replication
+- **Mathematical Framework:** Penalized regression (Ridge, Lasso, Elastic Net, Adaptive Lasso) with non-negativity constraints and Distance Correlation Sure Independence Screening (DC-SIS)
+- **Evaluation Strategy:** Time series rolling-origin cross-validation (504-day window, 21-day horizon)
 
 ---
 
 ## ⚙️ Features
-- Penalized regression with non-negativity constraints  
-- Variable screening via Distance Correlation Sure Independence Screening (DC-SIS)  
-- Rolling-origin cross-validation to prevent look-ahead bias  
-- Comparative evaluation of Ridge, Lasso, Elastic Net, and Adaptive Lasso  
-- Portfolio performance metrics: Tracking Error, Beta, Information Ratio, Jensen’s Alpha  
-- Interactive results visualization through a dedicated dashboard  
+- **Apply Penalized Regression:** Accommodate non-negativity constraints for portfolio weights
+- **Implement Variable Screening:** Reduce dimensionality via Distance Correlation Sure Independence Screening
+- **Prevent Look-Ahead Bias:** Execute robust testing via rolling-origin cross-validation
+- **Compare Models:** Evaluate Ridge, Lasso, Elastic Net, and Adaptive Lasso performance
+- **Calculate Portfolio Metrics:** Extract Tracking Error, Beta, Information Ratio, and Jensen's Alpha
+- **Visualize Interactive Results:** Manage application state through a dedicated dashboard
 
 ---
 
 ## 🧰 Tech Stack
-**Language:** R  
-**Core packages:** glmnet, VariableScreening, xts, zoo, PerformanceAnalytics, urca  
-
-**Visualization stack:** Python (Dash, Plotly, Pandas) for the results application
+- **Language:** R / Python >=3.11
+- **Data Engineering & Acquisition:** tidyquant, readxl, pandas-datareader
+- **Numerical Computing & Data Manipulation:** tidyverse, xts, zoo, pandas, numpy, geopandas, openpyxl
+- **Econometrics & Statistical Inference:** statsmodels
+- **Time Series Analysis:** urca, fBasics, forecast
+- **Machine Learning & Deep Learning:** glmnet, caret, VariableScreening
+- **Quantitative Finance:** PerformanceAnalytics
+- **Data Visualization:** corrplot, patchwork, plotly
+- **Dashboards & Web APIs:** dash, dash-auth, dash-bootstrap-components, dash-bootstrap-templates, gunicorn
 
 ---
 
-## ⚙️ Installation
-Clone the repository and install dependencies:
+## 📦 Installation
 
 ```bash
 git clone https://github.com/floriancrochet/master-year1-thesis.git
 cd master-year1-thesis
+uv sync
 ```
 
 ---
 
-## 📚 Usage Example
+## 💻 Usage Example
 
-```r
-# Example: Fit a penalized regression model with DC-SIS
-model <- dcsis_glmnet_function("adlasso_dcsis", grid)
+### Reproducing the Analysis / Execution Pipeline
 
-# Retrieve selected coefficients
-coefficients <- model$model_coefs
-
-# Count number of selected variables
-nb_variables <- model$model_variables
+```bash
+uv run python thesis_data_visualization.py
 ```
 
-> Additional examples can be found in the code repository and associated scripts.
+```r
+library(glmnet)
+
+# Example: Fit a penalized regression model with DC-SIS
+model <- dcsis_glmnet_function("adlasso_dcsis", grid)
+coefficients <- model$model_coefs
+```
 
 ---
 
 ## 📂 Project Structure
 
-```
+```text
 master-year1-thesis/
 │
-├── thesis.pdf                     # Full dissertation
-├── thesis_code/                   # R code for econometric analysis
-├── thesis_data_visualization/     # Dash application for results visualization
-├── data/                          # Processed financial datasets (CSV)
-├── assets/                        # Figures and charts
+├── data/                            # Processed financial datasets (CSV/RDS/Excel)
+│   ├── base_index_tracking.xlsx     # Initial dataset 
+│   ├── data_performance.csv         # Out of sample daily performance 
+│   └── performance.csv              # Synthesis of performance metrics
+├── report/                          # Generated analysis, figures, and PDFs
+│   ├── thesis.pdf                   # Full academic dissertation
+│   └── executive_summary.pdf        # High-level summary of findings
+├── thesis_data_visualization.py     # Dash application for results visualization
+├── thesis.qmd                       # R code for econometric analysis
+├── pyproject.toml                   # Python dependencies & project config (uv)
+├── uv.lock                          # Exact Python dependency tree (uv)
 └── README.md
 ```
 
 ---
 
-## 📊 Results
-The empirical results demonstrate that:
+## 📈 Results
 
-- **Lasso and Elastic Net** achieve the lowest tracking error and highest replication accuracy.  
-- **Adaptive Lasso** produces the most parsimonious portfolios and delivers superior risk-adjusted performance.  
-- **DC-SIS** improves model stability but slightly increases tracking error due to aggressive dimensionality reduction.
+### Performance Metrics
+| Model / Strategy               | Assets | Tracking Error | Beta   | Info Ratio | Active Return | Jensen's Alpha |
+|--------------------------------|--------|----------------|--------|------------|---------------|----------------|
+| Baseline (S&P 500)             | 484    | 0.0000         | 1.00   | NA         | 0.0000        | 0.0000         |
+| **Adaptive Lasso**             | **143** | 0.0201         | 1.03   | **1.82**   | **0.0365**    | **0.0322**     |
+| Lasso                          | 198    | **0.0198**     | 1.03   | 1.77       | 0.0350        | 0.0309         |
+| *Adaptive Lasso (DC-SIS)*      | *138*  | *0.0316*       | *0.99* | *0.13*     | *0.0040*      | *0.0048*       |
 
-The visualization application includes:
-- Variable selection diagrams  
-- Hyperparameter comparison charts  
-- Coefficient tables by model  
-- Portfolio performance graphs  
-
-> Example visualization:  
-> `thesis_data_visualization` dashboard presents comparative performance metrics and coefficient distributions.
+### Key Findings
+- **Lasso Model:** Achieved the lowest tracking error by isolating the 198 most informative constituent assets
+- **Adaptive Lasso Model:** Delivered superior risk-adjusted returns (143 assets), penalizing weak predictors while retaining key large-cap constituents
+- **Distance Correlation SIS:** Improved variable stability but introduced a modest increase in tracking error via aggressive dimensionality reduction
 
 ---
 
-## 🧠 References
-- Zou (2006) – *The Adaptive Lasso and Its Oracle Properties*  
-- Tibshirani (1996) – *Regression Shrinkage and Selection via the Lasso*  
-- Wu & Yang (2014) – *Nonnegative Elastic Net for Index Tracking*  
+## 📚 References
 - Székely et al. (2007) – *Measuring Dependence by Correlation of Distances*
+- Tibshirani (1996) – *Regression Shrinkage and Selection via the Lasso*
+- Wu & Yang (2014) – *Nonnegative Elastic Net for Index Tracking*
+- Zou (2006) – *The Adaptive Lasso and Its Oracle Properties*
 
 ---
 
 ## 📜 License
-This project is released under the **MIT License**.  
+This project is released under the MIT License.  
 © 2025 Florian Crochet
 
 ---
@@ -119,5 +143,5 @@ This project is released under the **MIT License**.
 
 ---
 
-## 💬 Acknowledgments
-This work was supervised by **Mr. Olivier Darné**.
+## 🤝 Acknowledgments
+This work was supervised by Mr. Olivier Darné.
