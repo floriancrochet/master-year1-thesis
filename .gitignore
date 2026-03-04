@@ -1,13 +1,43 @@
+# ========================
+# Python
+# ========================
+
+# Virtual environments
+.venv/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Environment variables
+.env
+
+# ========================
+# R / RStudio
+# ========================
+
 # History files
 .Rhistory
 .Rapp.history
 
 # Session Data files
 .RData
+.Rdata
 .RDataTmp
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+.jupyter/
 
 # User-specific files
 .Ruserdata
+.Rproj.user/
 
 # Example code in package build process
 *-Ex.R
@@ -18,15 +48,11 @@
 # Output files from R CMD check
 /*.Rcheck/
 
-# RStudio files
-.Rproj.user/
-*.Rproj
-
-# produced vignettes
+# Produced vignettes
 vignettes/*.html
 vignettes/*.pdf
 
-# OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
+# OAuth2 token
 .httr-oauth
 
 # knitr and R markdown default cache directories
@@ -43,8 +69,25 @@ vignettes/*.pdf
 # pkgdown site
 docs/
 
-# translation temp files
+# Translation temp files
 po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# ========================
+# OS / IDE
+# ========================
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/
+
+# Quarto
+/.quarto/

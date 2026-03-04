@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "master-year1-thesis"
+version = "0.1.0"
+description = "Sparse S&P 500 index replication using penalized regression methods with interactive Dash visualization"
+requires-python = ">=3.11"
+dependencies = [
+    "dash==2.14.2",
+    "dash-auth==2.0.0",
+    "dash-bootstrap-components==1.5.0",
+    "dash-bootstrap-templates==1.1.2",
+    "geopandas==0.12.1",
+    "gunicorn==25.1.0",
+    "numpy==1.23.4",
+    "openpyxl==3.1.5",
+    "pandas==1.5.1",
+    "pandas-datareader==0.10.0",
+    "plotly==5.18.0",
+    "statsmodels==0.14.4",
+]
