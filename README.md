@@ -70,7 +70,7 @@ uv sync
 ### Reproducing the Analysis / Execution Pipeline
 
 ```bash
-uv run python thesis_data_visualization.py
+uv run python dashboard/thesis_data_visualization.py
 ```
 
 ```r
