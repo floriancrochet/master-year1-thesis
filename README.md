@@ -88,18 +88,20 @@ coefficients <- model$model_coefs
 ```text
 master-year1-thesis/
 │
-├── data/                            # Processed financial datasets (CSV/RDS/Excel)
-│   ├── base_index_tracking.xlsx     # Initial dataset 
-│   ├── data_performance.csv         # Out of sample daily performance 
+├── data/                            # Processed financial data & model outputs
+│   ├── base_index_tracking.xlsx     # Initial dataset
 │   └── performance.csv              # Synthesis of performance metrics
+├── src/                             # Econometric engine & algorithmic core (R)
+│   └── thesis.qmd                   # Core modeling: Penalized regression & DC-SIS
+├── dashboard/                       # Interactive visualization interface (Python)
+│   └── thesis_data_visualization.py # Dash application for empirical results
 ├── report/                          # Generated analysis, figures, and PDFs
-│   ├── thesis.pdf                   # Full academic dissertation
-│   └── executive_summary.pdf        # High-level summary of findings
-├── thesis_data_visualization.py     # Dash application for results visualization
-├── thesis.qmd                       # R code for econometric analysis
+│   ├── executive_summary.pdf        # High-level summary of findings
+│   └── thesis.pdf                   # Full academic dissertation
+├── LICENSE                          # Legal usage parameters
+├── README.md                        # Documentation entry point
 ├── pyproject.toml                   # Python dependencies & project config (uv)
-├── uv.lock                          # Exact Python dependency tree (uv)
-└── README.md
+└── uv.lock                          # Exact Python dependency tree (uv)
 ```
 
 ---
