@@ -88,18 +88,25 @@ coefficients <- model$model_coefs
 ```text
 master-year1-thesis/
 │
-├── data/
-│   ├── base_index_tracking.xlsx     # S&P 500 constituent returns
-│   └── performance.csv              # Out-of-sample metrics
-├── src/
-│   └── thesis.qmd                   # Penalized regression & DC-SIS
 ├── dashboard/
 │   └── thesis_data_visualization.py
+├── data/
+│   ├── base_index_tracking.xlsx         # S&P 500 constituent returns
+│   ├── coefficients.csv
+│   ├── data_performance.csv
+│   ├── hyperparameters.csv
+│   ├── nb_variables.csv
+│   └── performance.csv                  # Out-of-sample metrics
 ├── report/
 │   ├── executive_summary.pdf
 │   └── thesis.pdf
+├── src/
+│   └── thesis.qmd                       # Penalized regression & DC-SIS
+├── .gitignore
+├── .python-version
 ├── LICENSE
 ├── README.md
+├── master-year1-thesis.Rproj
 ├── pyproject.toml
 └── uv.lock
 ```
